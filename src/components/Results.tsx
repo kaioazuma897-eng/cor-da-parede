@@ -1,7 +1,7 @@
 import { isDark, labToHex, type Lab } from '../core/color'
 import { describeDeltaE } from '../core/deltaE'
 import type { Cluster } from '../core/kmeans'
-import type { Match } from '../core/matcher'
+import type { CatalogColor, Match } from '../core/matcher'
 
 const fmt = (n: number, digits = 1) => n.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits })
 
@@ -40,14 +40,26 @@ export function SampleCard({ lab, spread, source }: { lab: Lab; spread: number |
   )
 }
 
-export function MatchList({ target, matches }: { target: Lab; matches: Match[] }) {
+type MatchListProps = {
+  target: Lab
+  matches: Match[]
+  /** Código da cor sendo exibida na prévia da parede, se houver. */
+  painted: string | null
+  onPaint: (color: CatalogColor) => void
+}
+
+export function MatchList({ target, matches, painted, onPaint }: MatchListProps) {
   const targetHex = labToHex(target)
   return (
     <ol className="matches">
       {matches.map(({ color, deltaE }, i) => {
         const perception = describeDeltaE(deltaE)
         return (
-          <li key={color.codigo} className="match" style={{ animationDelay: `${i * 50}ms` }}>
+          <li
+            key={color.codigo}
+            className={`match ${painted === color.codigo ? 'is-painted' : ''}`}
+            style={{ animationDelay: `${i * 50}ms` }}
+          >
             <div className="match-pair" aria-hidden>
               <span style={{ background: targetHex }} />
               <span style={{ background: color.hex }} />
@@ -57,6 +69,9 @@ export function MatchList({ target, matches }: { target: Lab; matches: Match[] }
               <span className="match-meta">
                 {color.codigo} · {color.hex}
               </span>
+              <button className="match-paint" aria-pressed={painted === color.codigo} onClick={() => onPaint(color)}>
+                {painted === color.codigo ? 'Na parede' : 'Ver na parede'}
+              </button>
             </div>
             <div className="match-score">
               <span className="match-delta" title="Diferença de cor CIEDE2000">

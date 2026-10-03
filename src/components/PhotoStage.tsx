@@ -13,6 +13,7 @@ type Props = {
   /** Outra marcação exibida de forma discreta (ex.: a folha, enquanto se marca a parede). */
   marker?: Marker | null
   tone: 'target' | 'reference'
+  /** Dica sobre a foto enquanto nada está selecionado; vazia = sem dica. */
   tip: string
   onSelect: (sel: Selection) => void
 }
@@ -106,7 +107,7 @@ export function PhotoStage({ pixels, selection, marker, tone, tip, onSelect }: P
         </div>
       )}
       {shown && <div className={`stage-selection ${draft ? 'is-draft' : ''}`} style={boxStyle(shown)} />}
-      {!selection && !draft && <div className="stage-tip">{tip}</div>}
+      {tip && !selection && !draft && <div className="stage-tip">{tip}</div>}
     </div>
   )
 }

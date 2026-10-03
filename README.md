@@ -38,6 +38,8 @@ foto ─► pixels (Canvas, orientação EXIF corrigida, máx. 1600 px)
      ─► sRGB → linear → XYZ (D65) → L*a*b*
      ─► região marcada: mediana por canal  ─┐
      ─► foto inteira: k-means++ (paleta)   ─┴► cor alvo ─► ΔE00 contra o catálogo ─► top 5
+                                                                                      │
+          prévia: crescimento de região a partir do toque ─► repintura preservando sombras ◄┘
 ```
 
 | Etapa | Arquivo | Por quê |
@@ -48,6 +50,7 @@ foto ─► pixels (Canvas, orientação EXIF corrigida, máx. 1600 px)
 | Paleta dominante | [`src/core/kmeans.ts`](src/core/kmeans.ts) | k-means em Lab, inicialização k-means++ e PRNG com semente (mesma foto → mesma paleta). |
 | Calibração | [`src/core/whiteBalance.ts`](src/core/whiteBalance.ts) | Corrige cor da luz e exposição usando uma folha branca na foto (ver abaixo). |
 | Paletas .ase / .zip | [`src/core/ase.ts`](src/core/ase.ts), [`src/core/zip.ts`](src/core/zip.ts) | Lê o formato binário Adobe Swatch Exchange e extrai de ZIP com `DecompressionStream`, sem bibliotecas. |
+| Prévia na parede | [`src/core/segment.ts`](src/core/segment.ts), [`src/core/recolor.ts`](src/core/recolor.ts) | Segmenta a parede a partir do toque e repinta mantendo sombras e textura (ver abaixo). |
 | Busca no catálogo | [`src/core/matcher.ts`](src/core/matcher.ts) | Exata por padrão; k-d tree opcional (ver abaixo). |
 
 ### Calibração com folha branca
@@ -79,6 +82,27 @@ mesmo sob lâmpada incandescente, fica em torno de 25.
 
 Limitações: papel comum tem branqueador óptico (puxa levemente para o azul) e a folha precisa receber a
 mesma luz que a parede. Com iluminação mista, a correção deixa de ser exata.
+
+### Prévia da cor na parede
+
+**Segmentação** ([`segment.ts`](src/core/segment.ts)): a foto vira uma grade Lab de até 800 px de lado (média por
+bloco em RGB linear + desfoque 3×3 contra ruído). A partir de cada toque, uma busca em largura cresce a região
+aceitando um vizinho quando:
+
+- ele tem o mesmo **tom** da referência (mediana 5×5 em volta do toque). A luminosidade pesa pouco (×0,35) e a* e b*
+  são **normalizados pela luminosidade** (`× (L_ref+16)/(L+16)`): escurecer uma cor multiplica a*, b* e L*+16 pelo
+  mesmo fator, então a mesma tinta na luz e na sombra fica com o mesmo valor. Um teste prova que, com tolerância
+  baixa, a região atravessa uma parede que vai de 100% a 40% de luz *com* a normalização e falha *sem* ela;
+- **não há borda** entre ele e o pixel de onde veio (mudança local brusca = rodapé, quadro, móvel).
+
+Depois, um fechamento morfológico tapa buraquinhos e um desfoque suaviza a borda da máscara.
+
+**Repintura** ([`recolor.ts`](src/core/recolor.ts)): cada pixel ≈ refletância da tinta × luz local. A razão entre a
+luminância do pixel e a mediana da parede estima a luz local (1 na área típica, 0,5 na sombra, >1 num reflexo), e
+a cor nova é a tinta escolhida em RGB linear multiplicada por essa razão. Sombras, textura e brilhos continuam lá.
+
+Limitação: reflexos fortes "lavam" a cor (somam branco) e não são invariantes a esse modelo; o usuário inclui
+tocando neles ou aumentando o alcance.
 
 ### Por que a busca padrão não usa a k-d tree
 
@@ -150,6 +174,6 @@ Respeite os termos de uso de cada fabricante: em geral, só uso pessoal (por iss
 - [x] Calibração de balanço de branco com uma folha A4 na foto
 - [ ] Análise em Web Worker (fotos grandes sem travar a tela)
 - [ ] Harmonias de cor (complementar, análoga, tríade) a partir da cor escolhida
-- [ ] Prévia da cor aplicada na parede
+- [x] Prévia da cor aplicada na parede
 - [x] PWA (instalar no celular, funcionar offline)
 - [x] Importar paletas oficiais (.ase/.zip) direto no app

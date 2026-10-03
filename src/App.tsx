@@ -1,19 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { CalibrationBar, type Mode } from './components/CalibrationBar'
 import { CatalogPicker } from './components/CatalogPicker'
+import { PaintBar, TOLERANCE_DEFAULT } from './components/PaintBar'
 import { PhotoPicker } from './components/PhotoPicker'
 import { PhotoStage, type Selection } from './components/PhotoStage'
 import { MatchList, Palette, SampleCard } from './components/Results'
 import type { Lab } from './core/color'
 import { regionColor, sampleLab, type PixelBuffer, type Rect } from './core/image'
 import { kMeans } from './core/kmeans'
-import { createMatcher } from './core/matcher'
+import { createMatcher, type CatalogColor } from './core/matcher'
+import { paintRegion } from './core/recolor'
+import { buildLabGrid, coverage, segmentWall, type Seed } from './core/segment'
 import { BLOCKING_WARNINGS, applyMatrix, calibrate, type Calibration } from './core/whiteBalance'
 import { demoPhoto, loadPhoto } from './lib/loadImage'
 import { useCatalogs } from './lib/useCatalogs'
 
 type Target = { kind: 'region'; selection: Selection } | { kind: 'palette'; index: number }
 type Paper = { selection: Selection; result: Calibration | null }
+type Paint = { color: CatalogColor; seeds: Seed[]; tolerance: number }
+
+const centerOf = (s: Selection): Seed => ({ x: s.x + s.w / 2, y: s.y + s.h / 2 })
 
 const toRect = (s: Selection, img: PixelBuffer): Rect => ({
   x: s.x * img.width,
@@ -28,6 +34,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('target')
   const [paper, setPaper] = useState<Paper | null>(null)
   const [showOriginal, setShowOriginal] = useState(false)
+  const [paint, setPaint] = useState<Paint | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const catalogs = useCatalogs()
@@ -38,6 +45,7 @@ export default function App() {
     setPhoto(next)
     setTarget(null)
     setPaper(null)
+    setPaint(null)
     setMode('target')
   }
 
@@ -84,8 +92,43 @@ export default function App() {
 
   const matches = useMemo(() => (sample ? matcher.findClosest(sample.lab, 5) : []), [sample, matcher])
 
+  // ---------- prévia da cor na parede ----------
+  const painting = paint !== null
+  // A grade Lab só é calculada quando a prévia é aberta, e reaproveitada a cada toque
+  const grid = useMemo(() => (painting && working ? buildLabGrid(working) : null), [painting, working])
+  // O controle deslizante responde na hora; a segmentação acompanha logo em seguida
+  const tolerance = useDeferredValue(paint?.tolerance ?? TOLERANCE_DEFAULT)
+  const seeds = paint?.seeds
+  const mask = useMemo(
+    () => (grid && seeds?.length ? segmentWall(grid, seeds, tolerance) : null),
+    [grid, seeds, tolerance],
+  )
+  const paintHex = paint?.color.hex
+  const painted = useMemo(
+    () => (working && mask && paintHex ? paintRegion(working, mask, paintHex) : null),
+    [working, mask, paintHex],
+  )
+
+  const photoRef = useRef<HTMLDivElement>(null)
+  const startPaint = (color: CatalogColor) => {
+    setShowOriginal(false)
+    setPaint((p) =>
+      p
+        ? { ...p, color }
+        : { color, tolerance: TOLERANCE_DEFAULT, seeds: regionSelection ? [centerOf(regionSelection)] : [] },
+    )
+    // No celular a lista fica abaixo da foto: volta para a foto
+    if (window.matchMedia('(max-width: 820px)').matches) {
+      photoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
   const onSelect = (selection: Selection) => {
     if (!photo) return
+    if (paint) {
+      setPaint({ ...paint, seeds: [...paint.seeds, centerOf(selection)] })
+      return
+    }
     if (mode === 'target') {
       setTarget({ kind: 'region', selection })
       return
@@ -149,33 +192,60 @@ export default function App() {
         <PhotoPicker busy={busy} onFile={(f) => open(() => loadPhoto(f))} onDemo={() => open(demoPhoto)} />
       ) : (
         <main className="workspace">
-          <div className="workspace-photo">
-            <CalibrationBar
-              mode={mode}
-              onMode={setMode}
-              calibration={calibration}
-              measured={measured}
-              failed={paper !== null && paper.result === null}
-              showOriginal={showOriginal}
-              onShowOriginal={setShowOriginal}
-              onClear={() => setPaper(null)}
-            />
-            <PhotoStage
-              pixels={showOriginal ? photo : working}
-              tone={mode}
-              selection={mode === 'target' ? regionSelection : (paper?.selection ?? null)}
-              marker={
-                mode === 'target'
-                  ? paper && { selection: paper.selection, label: 'Folha' }
-                  : regionSelection && { selection: regionSelection, label: 'Cor' }
-              }
-              tip={
-                mode === 'target'
-                  ? 'Toque num ponto ou arraste para marcar uma área'
-                  : 'Arraste sobre a folha branca'
-              }
-              onSelect={onSelect}
-            />
+          <div ref={photoRef} className="workspace-photo">
+            {paint ? (
+              <PaintBar
+                color={paint.color}
+                tolerance={paint.tolerance}
+                onTolerance={(t) => setPaint({ ...paint, tolerance: t })}
+                seeds={paint.seeds.length}
+                coverage={mask && coverage(mask)}
+                showOriginal={showOriginal}
+                onShowOriginal={setShowOriginal}
+                onUndo={() => setPaint({ ...paint, seeds: paint.seeds.slice(0, -1) })}
+                onClose={() => {
+                  setPaint(null)
+                  setShowOriginal(false)
+                }}
+              />
+            ) : (
+              <CalibrationBar
+                mode={mode}
+                onMode={setMode}
+                calibration={calibration}
+                measured={measured}
+                failed={paper !== null && paper.result === null}
+                showOriginal={showOriginal}
+                onShowOriginal={setShowOriginal}
+                onClear={() => setPaper(null)}
+              />
+            )}
+            {paint ? (
+              <PhotoStage
+                pixels={showOriginal ? working : (painted ?? working)}
+                tone="target"
+                selection={null}
+                tip={paint.seeds.length ? '' : 'Toque na parede para pintar'}
+                onSelect={onSelect}
+              />
+            ) : (
+              <PhotoStage
+                pixels={showOriginal ? photo : working}
+                tone={mode}
+                selection={mode === 'target' ? regionSelection : (paper?.selection ?? null)}
+                marker={
+                  mode === 'target'
+                    ? paper && { selection: paper.selection, label: 'Folha' }
+                    : regionSelection && { selection: regionSelection, label: 'Cor' }
+                }
+                tip={
+                  mode === 'target'
+                    ? 'Toque num ponto ou arraste para marcar uma área'
+                    : 'Arraste sobre a folha branca'
+                }
+                onSelect={onSelect}
+              />
+            )}
             <Palette
               clusters={palette}
               active={target?.kind === 'palette' ? target.index : null}
@@ -188,7 +258,12 @@ export default function App() {
               <>
                 <SampleCard {...sample} />
                 <h3 className="results-title">Mais próximas no catálogo</h3>
-                <MatchList target={sample.lab} matches={matches} />
+                <MatchList
+                  target={sample.lab}
+                  matches={matches}
+                  painted={paint?.color.codigo ?? null}
+                  onPaint={startPaint}
+                />
               </>
             ) : (
               <div className="results-empty">
