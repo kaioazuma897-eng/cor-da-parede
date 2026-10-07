@@ -11,6 +11,10 @@ type Props = {
   onShowOriginal: (show: boolean) => void
   onUndo: () => void
   onClose: () => void
+  /** Rótulo do botão de exportar: "Compartilhar" no celular, "Baixar imagem" no computador. */
+  exportLabel: string
+  exporting: boolean
+  onExport: () => void
 }
 
 export const TOLERANCE_MIN = 4
@@ -19,6 +23,7 @@ export const TOLERANCE_DEFAULT = 14
 
 export function PaintBar(props: Props) {
   const { color, tolerance, onTolerance, seeds, coverage, showOriginal, onShowOriginal, onUndo, onClose } = props
+  const { exportLabel, exporting, onExport } = props
   return (
     <div className="paint-bar">
       <div className="paint-head">
@@ -69,6 +74,9 @@ export function PaintBar(props: Props) {
             onKeyUp={() => onShowOriginal(false)}
           >
             Segure para ver antes
+          </button>
+          <button className="btn btn-small btn-primary" disabled={seeds === 0 || exporting} onClick={onExport}>
+            {exporting ? 'Gerando…' : exportLabel}
           </button>
         </div>
       </div>

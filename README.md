@@ -101,6 +101,12 @@ Depois, um fechamento morfológico tapa buraquinhos e um desfoque suaviza a bord
 luminância do pixel e a mediana da parede estima a luz local (1 na área típica, 0,5 na sombra, >1 num reflexo), e
 a cor nova é a tinta escolhida em RGB linear multiplicada por essa razão. Sombras, textura e brilhos continuam lá.
 
+**Escolher a cor e compartilhar:** qualquer tinta do catálogo pode ir para a parede, não só as mais próximas
+da cor medida. O seletor ordena o catálogo como um mostruário (neutros primeiro, depois por faixa de matiz em LCh)
+e busca por nome ou código ignorando acentos ([`catalogSearch.ts`](src/core/catalogSearch.ts)). O resultado pode ser
+compartilhado pelo menu nativo do celular (Web Share) ou baixado como JPG, com uma faixa embaixo identificando a
+tinta (nome, marca, código) para quem recebe a foto saber o que pedir na loja ([`exportImage.ts`](src/lib/exportImage.ts)).
+
 Limitação: reflexos fortes "lavam" a cor (somam branco) e não são invariantes a esse modelo; o usuário inclui
 tocando neles ou aumentando o alcance.
 
@@ -177,3 +183,7 @@ Respeite os termos de uso de cada fabricante: em geral, só uso pessoal (por iss
 - [x] Prévia da cor aplicada na parede
 - [x] PWA (instalar no celular, funcionar offline)
 - [x] Importar paletas oficiais (.ase/.zip) direto no app
+- [x] Escolher qualquer cor do catálogo para a prévia, com busca
+- [x] Compartilhar/baixar a foto com a cor aplicada
+- [ ] Várias paredes com cores diferentes na mesma foto
+- [ ] Simular a cor sob luz quente, fria e do dia
