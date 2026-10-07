@@ -1159,3 +1159,61 @@ h3 {
 .browser-more {
   align-self: center;
 }
+
+/* ---------- simulação de luz ---------- */
+
+.paint-lights {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.paint-lights-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.paint-lights-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.paint-light {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.paint-light:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.paint-light[aria-checked='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg);
+}
+
+.paint-light:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.paint-note {
+  margin: 0;
+  font-size: 12.5px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--l2) 12%, var(--surface));
+  color: var(--ink-2);
+}

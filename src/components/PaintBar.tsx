@@ -1,3 +1,4 @@
+import { LIGHTS } from '../core/lighting'
 import type { CatalogColor } from '../core/matcher'
 
 export type LayerInfo = {
@@ -16,6 +17,11 @@ type Props = {
   onRemoveLayer: (index: number) => void
   tolerance: number
   onTolerance: (value: number) => void
+  /** Id em LIGHTS da iluminação simulada. */
+  light: string
+  onLight: (id: string) => void
+  /** Foto calibrada pela folha: a base é de fato luz neutra, não só o ajuste automático da câmera. */
+  calibrated: boolean
   /** O worker ainda está calculando a prévia. */
   working: boolean
   showOriginal: boolean
@@ -36,6 +42,7 @@ export const MAX_LAYERS = 6
 
 export function PaintBar(props: Props) {
   const { layers, active, onSelectLayer, onAddLayer, onRemoveLayer, tolerance, onTolerance, working } = props
+  const { light, onLight, calibrated } = props
   const { showOriginal, onShowOriginal, onUndo, onClose, exportLabel, exporting, onExport } = props
   const layer = layers[active]
   const { color, seeds, coverage } = layer
@@ -88,6 +95,31 @@ export function PaintBar(props: Props) {
           </button>
         )}
       </div>
+
+      <div className="paint-lights">
+        <span className="paint-lights-label" id="paint-lights-label">
+          Luz
+        </span>
+        <div className="paint-lights-options" role="radiogroup" aria-labelledby="paint-lights-label">
+          {LIGHTS.map((l) => (
+            <button
+              key={l.id}
+              role="radio"
+              aria-checked={light === l.id}
+              className="paint-light"
+              onClick={() => onLight(l.id)}
+            >
+              {l.kelvin === null && !calibrated ? 'Como na foto' : l.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {light !== LIGHTS[0].id && !calibrated && (
+        <p className="paint-note">
+          Simulação aproximada: parte do princípio de que a foto está com a cor da luz neutra. Para mais precisão,
+          calibre a foto com a folha branca antes de abrir a prévia.
+        </p>
+      )}
 
       <p className="paint-help">
         {seeds === 0

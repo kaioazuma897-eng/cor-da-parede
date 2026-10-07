@@ -9,7 +9,7 @@ const PER_ROW = 3
  * Gera a imagem da prévia com uma faixa embaixo identificando cada tinta usada (amostra, nome,
  * código), para quem recebe a foto (família, pintor, loja) saber exatamente qual cor pedir.
  */
-export function renderExport(pixels: PixelBuffer, colors: readonly CatalogColor[]): HTMLCanvasElement {
+export function renderExport(pixels: PixelBuffer, colors: readonly CatalogColor[], note?: string): HTMLCanvasElement {
   const { width, height } = pixels
   const row = Math.max(72, Math.round(width * 0.09))
   const cols = Math.max(1, Math.min(colors.length, PER_ROW))
@@ -56,6 +56,23 @@ export function renderExport(pixels: PixelBuffer, colors: readonly CatalogColor[
     ctx.fillText(detail, textX, y + row - pad, maxText)
   })
 
+  if (note) {
+    // Etiqueta no canto da foto: deixa claro que a luz foi simulada
+    const size = Math.round(row * 0.2)
+    ctx.font = `600 ${size}px ${font}`
+    const w = ctx.measureText(note).width + size * 1.4
+    const h = size * 2
+    const x = width - w - pad
+    const y = height - h - pad
+    ctx.fillStyle = 'rgb(20 18 16 / 0.62)'
+    ctx.beginPath()
+    ctx.roundRect(x, y, w, h, h / 2)
+    ctx.fill()
+    ctx.fillStyle = '#FFFFFF'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(note, x + size * 0.7, y + h / 2)
+  }
+
   return canvas
 }
 
@@ -82,8 +99,13 @@ export function canShareImage(): boolean {
 }
 
 /** Abre o menu de compartilhar do aparelho ou, onde não houver, baixa o arquivo. */
-export async function shareOrDownload(pixels: PixelBuffer, colors: readonly CatalogColor[]): Promise<void> {
-  const blob = await toBlob(renderExport(pixels, colors))
+export async function shareOrDownload(
+  pixels: PixelBuffer,
+  colors: readonly CatalogColor[],
+  /** Aviso sobre a foto (ex.: luz simulada), também incluído no texto compartilhado. */
+  note?: string,
+): Promise<void> {
+  const blob = await toBlob(renderExport(pixels, colors, note))
   const file = new File([blob], fileName(colors), { type: 'image/jpeg' })
   const names = colors.map((c) => `${c.nome} (${c.codigo})`)
 
@@ -92,7 +114,7 @@ export async function shareOrDownload(pixels: PixelBuffer, colors: readonly Cata
       await navigator.share({
         files: [file],
         title: colors.length === 1 ? `Parede em ${colors[0].nome}` : 'Cores das paredes',
-        text: names.join('\n'),
+        text: [...names, ...(note ? [note] : [])].join('\n'),
       })
       return
     } catch (e) {

@@ -10,6 +10,7 @@ import type { Lab } from './core/color'
 import { regionColor, sampleLab, type PixelBuffer, type Rect } from './core/image'
 import { kMeans } from './core/kmeans'
 import { createMatcher, type CatalogColor } from './core/matcher'
+import { LIGHTS, lightingMatrix } from './core/lighting'
 import type { LayerSpec } from './core/scene'
 import type { Seed } from './core/segment'
 import { BLOCKING_WARNINGS, applyMatrix, calibrate, type Calibration } from './core/whiteBalance'
@@ -52,6 +53,7 @@ export default function App() {
   const [paper, setPaper] = useState<Paper | null>(null)
   const [showOriginal, setShowOriginal] = useState(false)
   const [paint, setPaint] = useState<Paint | null>(null)
+  const [lightId, setLightId] = useState(LIGHTS[0].id)
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -112,12 +114,15 @@ export default function App() {
 
   // ---------- prévia da cor na parede ----------
   const layer = paint ? paint.layers[paint.active] : null
+  const kelvin = LIGHTS.find((l) => l.id === lightId)?.kelvin ?? null
+  const light = useMemo(() => (kelvin === null ? null : lightingMatrix(kelvin)), [kelvin])
   const specs = useMemo((): LayerSpec[] | null => {
-    if (!paint?.layers.some((l) => l.seeds.length)) return null
+    // Sem nada pintado e sem simulação de luz, a prévia é a própria foto
+    if (!paint || (!paint.layers.some((l) => l.seeds.length) && !light)) return null
     return paint.layers.map((l) => ({ seeds: l.seeds, tolerance: l.tolerance, hex: l.color.hex }))
-  }, [paint])
-  // Segmentação e repintura rodam num Web Worker: a tela não trava em fotos grandes
-  const { painted, coverages, busy: painting } = usePainter(working, specs)
+  }, [paint, light])
+  // Segmentação, repintura e luz rodam num Web Worker: a tela não trava em fotos grandes
+  const { painted, coverages, busy: painting } = usePainter(working, specs, light)
 
   const updateLayer = (change: Partial<Layer>) =>
     setPaint((p) => p && { ...p, layers: p.layers.map((l, i) => (i === p.active ? { ...l, ...change } : l)) })
@@ -142,7 +147,8 @@ export default function App() {
     setExporting(true)
     setError(null)
     try {
-      await shareOrDownload(painted, usedColors(paint.layers))
+      const note = kelvin === null ? undefined : `Simulação: lâmpada de ${kelvin} K`
+      await shareOrDownload(painted, usedColors(paint.layers), note)
     } catch {
       setError('Não consegui gerar a imagem. Tente de novo.')
     } finally {
@@ -247,6 +253,9 @@ export default function App() {
                 onRemoveLayer={removeLayer}
                 tolerance={layer.tolerance}
                 onTolerance={(tolerance) => updateLayer({ tolerance })}
+                light={lightId}
+                onLight={setLightId}
+                calibrated={calibration !== null}
                 working={painting}
                 showOriginal={showOriginal}
                 onShowOriginal={setShowOriginal}
