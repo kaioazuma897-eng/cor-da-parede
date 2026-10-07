@@ -112,6 +112,21 @@ no primeiro toque) num computador, e várias vezes isso num celular. Fora da thr
 O [`usePainter`](src/lib/usePainter.ts) mantém só um pedido em andamento: enquanto o worker trabalha, pedidos novos
 (arrastando o alcance, por exemplo) substituem o pendente, e só o mais recente é calculado.
 
+**Como fica sob outra luz** ([`lighting.ts`](src/core/lighting.ts)): é o caminho inverso da calibração. A foto
+representa as cores sob branco neutro D65; para simular uma lâmpada de T kelvin, calcula-se o branco dela no lugar
+geométrico de Planck (aproximação cúbica de Kim et al., 2002) e aplica-se a adaptação de Bradford D65 → lâmpada,
+preservando a luminância do branco. O olho se adapta em boa parte à cor da luz (um papel branco sob lâmpada amarela
+continua parecendo quase branco depois de alguns minutos), então a simulação mostra **metade** do desvio de uma câmera
+com balanço fixo. Resultado na foto de exemplo calibrada:
+
+| | Luz do dia | Lâmpada neutra (4000 K) | Lâmpada amarela (2700 K) |
+|---|---|---|---|
+| Folha branca | `#F2F1F1` | `#FFEDD4` | `#FFE5B9` |
+| Parede Azul Sereno | `#7D9AB4` | `#8E979F` | `#A1938B` |
+
+Sem calibração, a simulação parte do princípio de que o balanço de branco automático da câmera deixou a foto neutra.
+Se a foto já foi tirada sob luz amarela, o efeito soma ao que já existe, e o app avisa para calibrar com a folha.
+
 **Escolher a cor e compartilhar:** qualquer tinta do catálogo pode ir para a parede, não só as mais próximas
 da cor medida. O seletor ordena o catálogo como um mostruário (neutros primeiro, depois por faixa de matiz em LCh)
 e busca por nome ou código ignorando acentos ([`catalogSearch.ts`](src/core/catalogSearch.ts)). O resultado pode ser
@@ -197,4 +212,4 @@ Respeite os termos de uso de cada fabricante: em geral, só uso pessoal (por iss
 - [x] Escolher qualquer cor do catálogo para a prévia, com busca
 - [x] Compartilhar/baixar a foto com a cor aplicada
 - [x] Várias paredes com cores diferentes na mesma foto
-- [ ] Simular a cor sob luz quente, fria e do dia
+- [x] Simular a cor sob lâmpada amarela e neutra

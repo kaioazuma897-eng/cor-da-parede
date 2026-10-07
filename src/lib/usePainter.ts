@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { Mat3 } from '../core/color'
 import type { PixelBuffer } from '../core/image'
 import type { LayerSpec } from '../core/scene'
 import type { PainterRequest, PainterResponse } from './paint.worker'
@@ -11,7 +12,7 @@ type Result = { photo: PixelBuffer; pixels: PixelBuffer; coverages: (number | nu
  * apenas o mais recente é processado em seguida.
  */
 function createPainterClient(onResult: (r: Result) => void, onBusy: (busy: boolean) => void) {
-  type Job = { photo: PixelBuffer; layers: LayerSpec[] }
+  type Job = { photo: PixelBuffer; layers: LayerSpec[]; light: Mat3 | null }
   let worker: Worker | null = null
   let sentPhoto: PixelBuffer | null = null
   let pending: Job | null = null
@@ -46,12 +47,12 @@ function createPainterClient(onResult: (r: Result) => void, onBusy: (busy: boole
     }
     inFlight = { ...job, id: ++nextId }
     onBusy(true)
-    post({ type: 'paint', id: inFlight.id, layers: job.layers })
+    post({ type: 'paint', id: inFlight.id, layers: job.layers, light: job.light })
   }
 
   return {
-    request(photo: PixelBuffer, layers: LayerSpec[]) {
-      pending = { photo, layers }
+    request(photo: PixelBuffer, layers: LayerSpec[], light: Mat3 | null) {
+      pending = { photo, layers, light }
       pump()
     },
     cancel() {
@@ -69,16 +70,19 @@ function createPainterClient(onResult: (r: Result) => void, onBusy: (busy: boole
   }
 }
 
-/** Pinta as camadas num Web Worker e devolve a última prévia pronta para esta foto. */
-export function usePainter(photo: PixelBuffer | null, layers: LayerSpec[] | null) {
+/**
+ * Pinta as camadas num Web Worker e devolve a última prévia pronta para esta foto.
+ * `layers: null` desliga a prévia; `light` simula outra iluminação sobre o resultado.
+ */
+export function usePainter(photo: PixelBuffer | null, layers: LayerSpec[] | null, light: Mat3 | null = null) {
   const [result, setResult] = useState<Result | null>(null)
   const [busy, setBusy] = useState(false)
   const [client] = useState(() => createPainterClient(setResult, setBusy))
 
   useEffect(() => {
-    if (photo && layers) client.request(photo, layers)
+    if (photo && layers) client.request(photo, layers, light)
     else client.cancel()
-  }, [client, photo, layers])
+  }, [client, photo, layers, light])
 
   useEffect(() => () => client.dispose(), [client])
 
