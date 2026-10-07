@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { CalibrationBar, type Mode } from './components/CalibrationBar'
 import { CatalogBrowser } from './components/CatalogBrowser'
 import { CatalogPicker } from './components/CatalogPicker'
+import { HarmonyPanel } from './components/HarmonyPanel'
 import { PaintBar, TOLERANCE_DEFAULT } from './components/PaintBar'
 import { PhotoPicker } from './components/PhotoPicker'
 import { PhotoStage, type Selection } from './components/PhotoStage'
@@ -193,6 +194,9 @@ export default function App() {
   }, [target])
 
   const regionSelection = target?.kind === 'region' ? target.selection : null
+  // Harmonias a partir da parede 1 (a principal: as outras paredes combinam com ela) ou, sem prévia,
+  // da tinta mais próxima da cor medida
+  const harmonyBase = paint?.layers[0].color ?? matches[0]?.color ?? null
 
   return (
     <div className="app">
@@ -333,6 +337,15 @@ export default function App() {
                   reflexos. Para mais precisão, use “Calibrar com folha”.
                 </p>
               </div>
+            )}
+            {harmonyBase && (
+              <HarmonyPanel
+                base={harmonyBase}
+                baseLabel={paint && paint.layers.length > 1 ? 'parede 1' : null}
+                matcher={matcher}
+                painted={layer?.color.codigo ?? null}
+                onPaint={startPaint}
+              />
             )}
             <CatalogBrowser colors={catalog.colors} painted={layer?.color.codigo ?? null} onPaint={startPaint} />
           </aside>

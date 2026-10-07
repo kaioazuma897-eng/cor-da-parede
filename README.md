@@ -127,6 +127,14 @@ com balanço fixo. Resultado na foto de exemplo calibrada:
 Sem calibração, a simulação parte do princípio de que o balanço de branco automático da câmera deixou a foto neutra.
 Se a foto já foi tirada sob luz amarela, o efeito soma ao que já existe, e o app avisa para calibrar com a folha.
 
+**Harmonias** ([`harmony.ts`](src/core/harmony.ts)): a partir da tinta da parede 1 (ou da mais próxima da cor
+medida), o matiz é girado em **LCh**, e não no círculo RGB, para que "oposto" seja oposto na percepção:
+tom sobre tom (L* ± 14), análogas (±30°), complementar (180°) e tríade (±120°). Cada cor ideal vira a tinta real
+mais próxima do catálogo, sem repetir tintas. Se nenhuma tinta fica a menos de ΔE00 18 da cor ideal, tenta-se a
+mesma cor com 75% e 50% do croma (tinta de parede raramente é tão viva quanto a complementar de uma cor saturada)
+e, se mesmo assim não houver, a harmonia não aparece: melhor não sugerir do que sugerir uma cor que não combina.
+Cores neutras (croma < 8) recebem só tom sobre tom, porque o matiz delas não significa nada.
+
 **Escolher a cor e compartilhar:** qualquer tinta do catálogo pode ir para a parede, não só as mais próximas
 da cor medida. O seletor ordena o catálogo como um mostruário (neutros primeiro, depois por faixa de matiz em LCh)
 e busca por nome ou código ignorando acentos ([`catalogSearch.ts`](src/core/catalogSearch.ts)). O resultado pode ser
@@ -205,7 +213,7 @@ Respeite os termos de uso de cada fabricante: em geral, só uso pessoal (por iss
 
 - [x] Calibração de balanço de branco com uma folha A4 na foto
 - [x] Prévia em Web Worker (fotos grandes sem travar a tela)
-- [ ] Harmonias de cor (complementar, análoga, tríade) a partir da cor escolhida
+- [x] Harmonias de cor (complementar, análoga, tríade) a partir da cor escolhida
 - [x] Prévia da cor aplicada na parede
 - [x] PWA (instalar no celular, funcionar offline)
 - [x] Importar paletas oficiais (.ase/.zip) direto no app
