@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CalibrationBar, type Mode } from './components/CalibrationBar'
 import { CatalogBrowser } from './components/CatalogBrowser'
 import { CatalogPicker } from './components/CatalogPicker'
@@ -10,16 +10,31 @@ import type { Lab } from './core/color'
 import { regionColor, sampleLab, type PixelBuffer, type Rect } from './core/image'
 import { kMeans } from './core/kmeans'
 import { createMatcher, type CatalogColor } from './core/matcher'
-import { paintRegion } from './core/recolor'
-import { buildLabGrid, coverage, segmentWall, type Seed } from './core/segment'
+import type { LayerSpec } from './core/scene'
+import type { Seed } from './core/segment'
 import { BLOCKING_WARNINGS, applyMatrix, calibrate, type Calibration } from './core/whiteBalance'
 import { canShareImage, shareOrDownload } from './lib/exportImage'
 import { demoPhoto, loadPhoto } from './lib/loadImage'
 import { useCatalogs } from './lib/useCatalogs'
+import { usePainter } from './lib/usePainter'
 
 type Target = { kind: 'region'; selection: Selection } | { kind: 'palette'; index: number }
 type Paper = { selection: Selection; result: Calibration | null }
-type Paint = { color: CatalogColor; seeds: Seed[]; tolerance: number }
+/** Uma parede da prévia: seus toques, seu alcance e sua cor. */
+type Layer = { id: number; color: CatalogColor; seeds: Seed[]; tolerance: number }
+/** `active`: índice da parede que recebe os toques e a cor escolhida na lista. */
+type Paint = { layers: Layer[]; active: number }
+
+const newLayer = (color: CatalogColor, seeds: Seed[] = []): Layer => ({
+  id: Date.now() + Math.random(),
+  color,
+  seeds,
+  tolerance: TOLERANCE_DEFAULT,
+})
+
+/** Cores distintas usadas nas paredes já pintadas, na ordem das camadas. */
+const usedColors = (layers: Layer[]) =>
+  layers.filter((l) => l.seeds.length).map((l) => l.color).filter((c, i, all) => all.findIndex((o) => o.codigo === c.codigo) === i)
 
 const centerOf = (s: Selection): Seed => ({ x: s.x + s.w / 2, y: s.y + s.h / 2 })
 
@@ -96,28 +111,38 @@ export default function App() {
   const matches = useMemo(() => (sample ? matcher.findClosest(sample.lab, 5) : []), [sample, matcher])
 
   // ---------- prévia da cor na parede ----------
-  const painting = paint !== null
-  // A grade Lab só é calculada quando a prévia é aberta, e reaproveitada a cada toque
-  const grid = useMemo(() => (painting && working ? buildLabGrid(working) : null), [painting, working])
-  // O controle deslizante responde na hora; a segmentação acompanha logo em seguida
-  const tolerance = useDeferredValue(paint?.tolerance ?? TOLERANCE_DEFAULT)
-  const seeds = paint?.seeds
-  const mask = useMemo(
-    () => (grid && seeds?.length ? segmentWall(grid, seeds, tolerance) : null),
-    [grid, seeds, tolerance],
-  )
-  const paintHex = paint?.color.hex
-  const painted = useMemo(
-    () => (working && mask && paintHex ? paintRegion(working, mask, paintHex) : null),
-    [working, mask, paintHex],
-  )
+  const layer = paint ? paint.layers[paint.active] : null
+  const specs = useMemo((): LayerSpec[] | null => {
+    if (!paint?.layers.some((l) => l.seeds.length)) return null
+    return paint.layers.map((l) => ({ seeds: l.seeds, tolerance: l.tolerance, hex: l.color.hex }))
+  }, [paint])
+  // Segmentação e repintura rodam num Web Worker: a tela não trava em fotos grandes
+  const { painted, coverages, busy: painting } = usePainter(working, specs)
+
+  const updateLayer = (change: Partial<Layer>) =>
+    setPaint((p) => p && { ...p, layers: p.layers.map((l, i) => (i === p.active ? { ...l, ...change } : l)) })
+
+  const addLayer = () =>
+    setPaint((p) => p && { layers: [...p.layers, newLayer(p.layers[p.active].color)], active: p.layers.length })
+
+  const removeLayer = (index: number) => {
+    if (!paint) return
+    if (paint.layers.length === 1) {
+      setPaint(null)
+      setShowOriginal(false)
+      return
+    }
+    const layers = paint.layers.filter((_, i) => i !== index)
+    const active = paint.active > index || paint.active === layers.length ? paint.active - 1 : paint.active
+    setPaint({ layers, active })
+  }
 
   const exportPainted = async () => {
     if (!painted || !paint) return
     setExporting(true)
     setError(null)
     try {
-      await shareOrDownload(painted, paint.color)
+      await shareOrDownload(painted, usedColors(paint.layers))
     } catch {
       setError('Não consegui gerar a imagem. Tente de novo.')
     } finally {
@@ -129,11 +154,8 @@ export default function App() {
   const photoRef = useRef<HTMLDivElement>(null)
   const startPaint = (color: CatalogColor) => {
     setShowOriginal(false)
-    setPaint((p) =>
-      p
-        ? { ...p, color }
-        : { color, tolerance: TOLERANCE_DEFAULT, seeds: regionSelection ? [centerOf(regionSelection)] : [] },
-    )
+    if (paint) updateLayer({ color })
+    else setPaint({ layers: [newLayer(color, regionSelection ? [centerOf(regionSelection)] : [])], active: 0 })
     // No celular a lista fica abaixo da foto: volta para a foto
     if (window.matchMedia('(max-width: 820px)').matches) {
       photoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -142,8 +164,8 @@ export default function App() {
 
   const onSelect = (selection: Selection) => {
     if (!photo) return
-    if (paint) {
-      setPaint({ ...paint, seeds: [...paint.seeds, centerOf(selection)] })
+    if (layer) {
+      updateLayer({ seeds: [...layer.seeds, centerOf(selection)] })
       return
     }
     if (mode === 'target') {
@@ -210,16 +232,25 @@ export default function App() {
       ) : (
         <main className="workspace">
           <div ref={photoRef} className="workspace-photo">
-            {paint ? (
+            {paint && layer ? (
               <PaintBar
-                color={paint.color}
-                tolerance={paint.tolerance}
-                onTolerance={(t) => setPaint({ ...paint, tolerance: t })}
-                seeds={paint.seeds.length}
-                coverage={mask && coverage(mask)}
+                layers={paint.layers.map((l, i) => ({
+                  id: l.id,
+                  color: l.color,
+                  seeds: l.seeds.length,
+                  // Cobertura só vale se o último resultado já tem as mesmas paredes
+                  coverage: coverages?.length === paint.layers.length ? coverages[i] : null,
+                }))}
+                active={paint.active}
+                onSelectLayer={(active) => setPaint({ ...paint, active })}
+                onAddLayer={addLayer}
+                onRemoveLayer={removeLayer}
+                tolerance={layer.tolerance}
+                onTolerance={(tolerance) => updateLayer({ tolerance })}
+                working={painting}
                 showOriginal={showOriginal}
                 onShowOriginal={setShowOriginal}
-                onUndo={() => setPaint({ ...paint, seeds: paint.seeds.slice(0, -1) })}
+                onUndo={() => updateLayer({ seeds: layer.seeds.slice(0, -1) })}
                 exportLabel={exportLabel}
                 exporting={exporting}
                 onExport={exportPainted}
@@ -240,12 +271,12 @@ export default function App() {
                 onClear={() => setPaper(null)}
               />
             )}
-            {paint ? (
+            {layer ? (
               <PhotoStage
                 pixels={showOriginal ? working : (painted ?? working)}
                 tone="target"
                 selection={null}
-                tip={paint.seeds.length ? '' : 'Toque na parede para pintar'}
+                tip={paint?.layers.some((l) => l.seeds.length) ? '' : 'Toque na parede para pintar'}
                 onSelect={onSelect}
               />
             ) : (
@@ -281,7 +312,7 @@ export default function App() {
                 <MatchList
                   target={sample.lab}
                   matches={matches}
-                  painted={paint?.color.codigo ?? null}
+                  painted={layer?.color.codigo ?? null}
                   onPaint={startPaint}
                 />
               </>
@@ -294,7 +325,7 @@ export default function App() {
                 </p>
               </div>
             )}
-            <CatalogBrowser colors={catalog.colors} painted={paint?.color.codigo ?? null} onPaint={startPaint} />
+            <CatalogBrowser colors={catalog.colors} painted={layer?.color.codigo ?? null} onPaint={startPaint} />
           </aside>
         </main>
       )}

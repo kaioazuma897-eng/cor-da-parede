@@ -2,45 +2,59 @@ import { hexToLab, isDark } from '../core/color'
 import type { PixelBuffer } from '../core/image'
 import type { CatalogColor } from '../core/matcher'
 
+/** Cores por linha na faixa de baixo. */
+const PER_ROW = 3
+
 /**
- * Gera a imagem da prévia com uma faixa embaixo identificando a tinta (amostra, nome, código),
- * para quem recebe a foto (família, pintor, loja) saber exatamente qual cor pedir.
+ * Gera a imagem da prévia com uma faixa embaixo identificando cada tinta usada (amostra, nome,
+ * código), para quem recebe a foto (família, pintor, loja) saber exatamente qual cor pedir.
  */
-export function renderExport(pixels: PixelBuffer, color: CatalogColor): HTMLCanvasElement {
+export function renderExport(pixels: PixelBuffer, colors: readonly CatalogColor[]): HTMLCanvasElement {
   const { width, height } = pixels
-  const strip = Math.max(72, Math.round(width * 0.09))
-  const pad = Math.round(strip * 0.2)
+  const row = Math.max(72, Math.round(width * 0.09))
+  const cols = Math.max(1, Math.min(colors.length, PER_ROW))
+  const rows = Math.ceil(colors.length / cols)
+  const pad = Math.round(row * 0.2)
 
   const canvas = document.createElement('canvas')
   canvas.width = width
-  canvas.height = height + strip
+  canvas.height = height + row * rows
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas 2D indisponível')
 
   ctx.putImageData(new ImageData(new Uint8ClampedArray(pixels.data), width, height), 0, 0)
-
-  // Faixa clara, com a amostra da tinta à esquerda
   ctx.fillStyle = '#FFFDF9'
-  ctx.fillRect(0, height, width, strip)
-  const swatch = strip - pad * 2
-  ctx.fillStyle = color.hex
-  ctx.fillRect(pad, height + pad, swatch, swatch)
-  if (!isDark(hexToLab(color.hex))) {
-    // Amostra clara some sobre o fundo claro: contorno discreto
-    ctx.strokeStyle = 'rgb(0 0 0 / 0.15)'
-    ctx.lineWidth = Math.max(1, strip / 72)
-    ctx.strokeRect(pad, height + pad, swatch, swatch)
-  }
+  ctx.fillRect(0, height, width, row * rows)
 
-  const textX = pad * 2 + swatch
+  const cell = width / cols
+  const swatch = row - pad * 2
   const font = 'system-ui, -apple-system, "Segoe UI", sans-serif'
   ctx.textBaseline = 'alphabetic'
-  ctx.fillStyle = '#1F1C19'
-  ctx.font = `600 ${Math.round(strip * 0.3)}px ${font}`
-  ctx.fillText(color.nome, textX, height + pad + strip * 0.3, width - textX - pad)
-  ctx.fillStyle = '#5D564E'
-  ctx.font = `${Math.round(strip * 0.2)}px ${font}`
-  ctx.fillText(`${color.marca} · ${color.codigo} · ${color.hex}`, textX, height + strip - pad, width - textX - pad)
+
+  colors.forEach((color, i) => {
+    const x = Math.round((i % cols) * cell)
+    const y = height + Math.floor(i / cols) * row
+
+    // Amostra da tinta à esquerda de cada célula
+    ctx.fillStyle = color.hex
+    ctx.fillRect(x + pad, y + pad, swatch, swatch)
+    if (!isDark(hexToLab(color.hex))) {
+      // Amostra clara some sobre o fundo claro: contorno discreto
+      ctx.strokeStyle = 'rgb(0 0 0 / 0.15)'
+      ctx.lineWidth = Math.max(1, row / 72)
+      ctx.strokeRect(x + pad, y + pad, swatch, swatch)
+    }
+
+    const textX = x + pad * 2 + swatch
+    const maxText = cell - (textX - x) - pad
+    ctx.fillStyle = '#1F1C19'
+    ctx.font = `600 ${Math.round(row * (cols > 1 ? 0.24 : 0.3))}px ${font}`
+    ctx.fillText(color.nome, textX, y + pad + row * 0.3, maxText)
+    ctx.fillStyle = '#5D564E'
+    ctx.font = `${Math.round(row * (cols > 1 ? 0.17 : 0.2))}px ${font}`
+    const detail = cols > 1 ? color.codigo : `${color.marca} · ${color.codigo} · ${color.hex}`
+    ctx.fillText(detail, textX, y + row - pad, maxText)
+  })
 
   return canvas
 }
@@ -50,8 +64,8 @@ const toBlob = (canvas: HTMLCanvasElement) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Falha ao gerar a imagem'))), 'image/jpeg', 0.9),
   )
 
-const fileName = (color: CatalogColor) =>
-  `parede-${color.codigo}-${color.nome}`
+const fileName = (colors: readonly CatalogColor[]) =>
+  (colors.length === 1 ? `parede-${colors[0].codigo}-${colors[0].nome}` : `parede-${colors.length}-cores`)
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
     .replace(/[^\w-]+/g, '-')
@@ -68,13 +82,18 @@ export function canShareImage(): boolean {
 }
 
 /** Abre o menu de compartilhar do aparelho ou, onde não houver, baixa o arquivo. */
-export async function shareOrDownload(pixels: PixelBuffer, color: CatalogColor): Promise<void> {
-  const blob = await toBlob(renderExport(pixels, color))
-  const file = new File([blob], fileName(color), { type: 'image/jpeg' })
+export async function shareOrDownload(pixels: PixelBuffer, colors: readonly CatalogColor[]): Promise<void> {
+  const blob = await toBlob(renderExport(pixels, colors))
+  const file = new File([blob], fileName(colors), { type: 'image/jpeg' })
+  const names = colors.map((c) => `${c.nome} (${c.codigo})`)
 
   if (canShareImage()) {
     try {
-      await navigator.share({ files: [file], title: `Parede em ${color.nome}`, text: `${color.nome} (${color.codigo})` })
+      await navigator.share({
+        files: [file],
+        title: colors.length === 1 ? `Parede em ${colors[0].nome}` : 'Cores das paredes',
+        text: names.join('\n'),
+      })
       return
     } catch (e) {
       // Usuário fechou o menu: não é erro

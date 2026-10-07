@@ -55,28 +55,41 @@ export function referenceLuminance(img: PixelBuffer, mask: Mask, maxSamples = 20
   return ys[ys.length >> 1]
 }
 
-export function paintRegion(img: PixelBuffer, mask: Mask, targetHex: string): PixelBuffer {
+export type PaintLayer = { mask: Mask; hex: string }
+
+/**
+ * Pinta várias regiões, cada uma com sua cor. A luz local é sempre estimada na foto original,
+ * então uma camada não interfere no sombreamento da outra. Onde as máscaras se sobrepõem,
+ * a camada posterior fica por cima.
+ */
+export function paintLayers(img: PixelBuffer, layers: readonly PaintLayer[]): PixelBuffer {
   const out = new Uint8ClampedArray(img.data)
-  const yRef = referenceLuminance(img, mask)
-  if (yRef <= 0) return { data: out, width: img.width, height: img.height }
+  for (const { mask, hex } of layers) {
+    const yRef = referenceLuminance(img, mask)
+    if (yRef <= 0) continue
 
-  const { r, g, b } = hexToRgb(targetHex)
-  const tr = TO_LINEAR[r]
-  const tg = TO_LINEAR[g]
-  const tb = TO_LINEAR[b]
-  const sample = maskSampler(mask, img.width, img.height)
+    const { r, g, b } = hexToRgb(hex)
+    const tr = TO_LINEAR[r]
+    const tg = TO_LINEAR[g]
+    const tb = TO_LINEAR[b]
+    const sample = maskSampler(mask, img.width, img.height)
 
-  for (let y = 0; y < img.height; y++) {
-    for (let x = 0; x < img.width; x++) {
-      const m = sample(x, y)
-      if (m <= 0.001) continue
-      const i = (y * img.width + x) * 4
-      const light = luminance(TO_LINEAR[img.data[i]], TO_LINEAR[img.data[i + 1]], TO_LINEAR[img.data[i + 2]]) / yRef
-      // Mistura na borda suave da máscara
-      out[i] = img.data[i] * (1 - m) + encode(tr * light) * m
-      out[i + 1] = img.data[i + 1] * (1 - m) + encode(tg * light) * m
-      out[i + 2] = img.data[i + 2] * (1 - m) + encode(tb * light) * m
+    for (let y = 0; y < img.height; y++) {
+      for (let x = 0; x < img.width; x++) {
+        const m = sample(x, y)
+        if (m <= 0.001) continue
+        const i = (y * img.width + x) * 4
+        const light = luminance(TO_LINEAR[img.data[i]], TO_LINEAR[img.data[i + 1]], TO_LINEAR[img.data[i + 2]]) / yRef
+        // Mistura na borda suave da máscara, sobre o que já foi pintado
+        out[i] = out[i] * (1 - m) + encode(tr * light) * m
+        out[i + 1] = out[i + 1] * (1 - m) + encode(tg * light) * m
+        out[i + 2] = out[i + 2] * (1 - m) + encode(tb * light) * m
+      }
     }
   }
   return { data: out, width: img.width, height: img.height }
+}
+
+export function paintRegion(img: PixelBuffer, mask: Mask, targetHex: string): PixelBuffer {
+  return paintLayers(img, [{ mask, hex: targetHex }])
 }

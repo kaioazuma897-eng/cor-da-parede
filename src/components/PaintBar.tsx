@@ -1,12 +1,23 @@
 import type { CatalogColor } from '../core/matcher'
 
-type Props = {
+export type LayerInfo = {
+  id: number
   color: CatalogColor
+  seeds: number
+  /** Fração da foto pintada (0–1); null enquanto não há toque ou o cálculo não terminou. */
+  coverage: number | null
+}
+
+type Props = {
+  layers: LayerInfo[]
+  active: number
+  onSelectLayer: (index: number) => void
+  onAddLayer: () => void
+  onRemoveLayer: (index: number) => void
   tolerance: number
   onTolerance: (value: number) => void
-  seeds: number
-  /** Fração da foto pintada (0–1); null enquanto não há toque. */
-  coverage: number | null
+  /** O worker ainda está calculando a prévia. */
+  working: boolean
   showOriginal: boolean
   onShowOriginal: (show: boolean) => void
   onUndo: () => void
@@ -20,10 +31,16 @@ type Props = {
 export const TOLERANCE_MIN = 4
 export const TOLERANCE_MAX = 30
 export const TOLERANCE_DEFAULT = 14
+/** Mais que isso fica difícil de acompanhar na tela do celular. */
+export const MAX_LAYERS = 6
 
 export function PaintBar(props: Props) {
-  const { color, tolerance, onTolerance, seeds, coverage, showOriginal, onShowOriginal, onUndo, onClose } = props
-  const { exportLabel, exporting, onExport } = props
+  const { layers, active, onSelectLayer, onAddLayer, onRemoveLayer, tolerance, onTolerance, working } = props
+  const { showOriginal, onShowOriginal, onUndo, onClose, exportLabel, exporting, onExport } = props
+  const layer = layers[active]
+  const { color, seeds, coverage } = layer
+  const anyPainted = layers.some((l) => l.seeds > 0)
+
   return (
     <div className="paint-bar">
       <div className="paint-head">
@@ -39,10 +56,45 @@ export function PaintBar(props: Props) {
         </button>
       </div>
 
+      <div className="paint-layers" role="tablist" aria-label="Paredes">
+        {layers.map((l, i) => (
+          <div key={l.id} className={`paint-layer ${i === active ? 'is-active' : ''}`}>
+            <button
+              role="tab"
+              aria-selected={i === active}
+              className="paint-layer-pick"
+              title={`Parede ${i + 1}: ${l.color.nome}`}
+              onClick={() => onSelectLayer(i)}
+            >
+              <span className="paint-layer-swatch" style={{ background: l.color.hex }} aria-hidden />
+              Parede {i + 1}
+              {l.seeds === 0 && <span className="paint-layer-empty"> · sem toque</span>}
+            </button>
+            {layers.length > 1 && (
+              <button
+                className="paint-layer-remove"
+                aria-label={`Remover parede ${i + 1}`}
+                title="Remover esta parede"
+                onClick={() => onRemoveLayer(i)}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+        {layers.length < MAX_LAYERS && (
+          <button className="paint-layer-add" disabled={seeds === 0} onClick={onAddLayer}>
+            + Outra parede
+          </button>
+        )}
+      </div>
+
       <p className="paint-help">
         {seeds === 0
-          ? 'Toque na parede que você quer pintar.'
-          : 'Toque em outras partes da parede para incluí-las. Reflexos de luz ficaram de fora? Toque neles ou aumente o alcance.'}
+          ? layers.length > 1
+            ? 'Toque na próxima parede e escolha a cor dela na lista.'
+            : 'Toque na parede que você quer pintar.'
+          : 'Toque em outras partes desta parede para incluí-las. Reflexos de luz ficaram de fora? Toque neles ou aumente o alcance.'}
         {coverage !== null && coverage < 0.01 && seeds > 0 && ' Quase nada foi pintado: aumente o alcance.'}
       </p>
 
@@ -58,6 +110,9 @@ export function PaintBar(props: Props) {
             onChange={(e) => onTolerance(Number(e.target.value))}
             aria-valuetext={`${tolerance}`}
           />
+          <span className={`paint-working ${working ? 'is-on' : ''}`} role="status">
+            {working ? 'Pintando…' : ''}
+          </span>
         </label>
         <div className="paint-actions">
           <button className="btn btn-small" disabled={seeds === 0} onClick={onUndo}>
@@ -65,7 +120,7 @@ export function PaintBar(props: Props) {
           </button>
           <button
             className="btn btn-small"
-            disabled={seeds === 0}
+            disabled={!anyPainted}
             aria-pressed={showOriginal}
             onPointerDown={() => onShowOriginal(true)}
             onPointerUp={() => onShowOriginal(false)}
@@ -75,7 +130,7 @@ export function PaintBar(props: Props) {
           >
             Segure para ver antes
           </button>
-          <button className="btn btn-small btn-primary" disabled={seeds === 0 || exporting} onClick={onExport}>
+          <button className="btn btn-small btn-primary" disabled={!anyPainted || exporting} onClick={onExport}>
             {exporting ? 'Gerando…' : exportLabel}
           </button>
         </div>
