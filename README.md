@@ -101,6 +101,17 @@ Depois, um fechamento morfológico tapa buraquinhos e um desfoque suaviza a bord
 luminância do pixel e a mediana da parede estima a luz local (1 na área típica, 0,5 na sombra, >1 num reflexo), e
 a cor nova é a tinta escolhida em RGB linear multiplicada por essa razão. Sombras, textura e brilhos continuam lá.
 
+**Várias paredes:** cada parede é uma camada com seus toques, seu alcance e sua cor
+([`scene.ts`](src/core/scene.ts)). A luz local é estimada sempre na foto original, então uma camada não altera o
+sombreamento da outra; onde duas se sobrepõem, a última fica por cima. As máscaras ficam em cache por toques + alcance:
+trocar a cor de uma parede repinta sem segmentar de novo.
+
+**Web Worker:** segmentação e repintura rodam em [`paint.worker.ts`](src/lib/paint.worker.ts). Numa foto de
+1600 px, cada mudança custa ~100 ms de segmentação + ~100 ms de repintura (mais ~120 ms para montar a grade Lab
+no primeiro toque) num computador, e várias vezes isso num celular. Fora da thread principal, a tela não trava.
+O [`usePainter`](src/lib/usePainter.ts) mantém só um pedido em andamento: enquanto o worker trabalha, pedidos novos
+(arrastando o alcance, por exemplo) substituem o pendente, e só o mais recente é calculado.
+
 **Escolher a cor e compartilhar:** qualquer tinta do catálogo pode ir para a parede, não só as mais próximas
 da cor medida. O seletor ordena o catálogo como um mostruário (neutros primeiro, depois por faixa de matiz em LCh)
 e busca por nome ou código ignorando acentos ([`catalogSearch.ts`](src/core/catalogSearch.ts)). O resultado pode ser
@@ -178,12 +189,12 @@ Respeite os termos de uso de cada fabricante: em geral, só uso pessoal (por iss
 ## Próximos passos
 
 - [x] Calibração de balanço de branco com uma folha A4 na foto
-- [ ] Análise em Web Worker (fotos grandes sem travar a tela)
+- [x] Prévia em Web Worker (fotos grandes sem travar a tela)
 - [ ] Harmonias de cor (complementar, análoga, tríade) a partir da cor escolhida
 - [x] Prévia da cor aplicada na parede
 - [x] PWA (instalar no celular, funcionar offline)
 - [x] Importar paletas oficiais (.ase/.zip) direto no app
 - [x] Escolher qualquer cor do catálogo para a prévia, com busca
 - [x] Compartilhar/baixar a foto com a cor aplicada
-- [ ] Várias paredes com cores diferentes na mesma foto
+- [x] Várias paredes com cores diferentes na mesma foto
 - [ ] Simular a cor sob luz quente, fria e do dia
