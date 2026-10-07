@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { CalibrationBar, type Mode } from './components/CalibrationBar'
+import { CatalogBrowser } from './components/CatalogBrowser'
 import { CatalogPicker } from './components/CatalogPicker'
 import { PaintBar, TOLERANCE_DEFAULT } from './components/PaintBar'
 import { PhotoPicker } from './components/PhotoPicker'
@@ -12,6 +13,7 @@ import { createMatcher, type CatalogColor } from './core/matcher'
 import { paintRegion } from './core/recolor'
 import { buildLabGrid, coverage, segmentWall, type Seed } from './core/segment'
 import { BLOCKING_WARNINGS, applyMatrix, calibrate, type Calibration } from './core/whiteBalance'
+import { canShareImage, shareOrDownload } from './lib/exportImage'
 import { demoPhoto, loadPhoto } from './lib/loadImage'
 import { useCatalogs } from './lib/useCatalogs'
 
@@ -36,6 +38,7 @@ export default function App() {
   const [showOriginal, setShowOriginal] = useState(false)
   const [paint, setPaint] = useState<Paint | null>(null)
   const [busy, setBusy] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const catalogs = useCatalogs()
   const catalog = catalogs.selected
@@ -108,6 +111,20 @@ export default function App() {
     () => (working && mask && paintHex ? paintRegion(working, mask, paintHex) : null),
     [working, mask, paintHex],
   )
+
+  const exportPainted = async () => {
+    if (!painted || !paint) return
+    setExporting(true)
+    setError(null)
+    try {
+      await shareOrDownload(painted, paint.color)
+    } catch {
+      setError('Não consegui gerar a imagem. Tente de novo.')
+    } finally {
+      setExporting(false)
+    }
+  }
+  const exportLabel = useMemo(() => (canShareImage() ? 'Compartilhar' : 'Baixar imagem'), [])
 
   const photoRef = useRef<HTMLDivElement>(null)
   const startPaint = (color: CatalogColor) => {
@@ -203,6 +220,9 @@ export default function App() {
                 showOriginal={showOriginal}
                 onShowOriginal={setShowOriginal}
                 onUndo={() => setPaint({ ...paint, seeds: paint.seeds.slice(0, -1) })}
+                exportLabel={exportLabel}
+                exporting={exporting}
+                onExport={exportPainted}
                 onClose={() => {
                   setPaint(null)
                   setShowOriginal(false)
@@ -267,13 +287,14 @@ export default function App() {
               </>
             ) : (
               <div className="results-empty">
-                <p>Marque um ponto da foto ou escolha uma das cores dominantes.</p>
+                <p>Marque um ponto da foto para descobrir a cor, ou escolha uma tinta abaixo para ver na parede.</p>
                 <p className="muted">
                   Dica: marque uma área em vez de um ponto. A cor final é a mediana da área, o que descarta sombras e
                   reflexos. Para mais precisão, use “Calibrar com folha”.
                 </p>
               </div>
             )}
+            <CatalogBrowser colors={catalog.colors} painted={paint?.color.codigo ?? null} onPaint={startPaint} />
           </aside>
         </main>
       )}
