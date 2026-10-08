@@ -1217,3 +1217,74 @@ h3 {
   background: color-mix(in srgb, var(--l2) 12%, var(--surface));
   color: var(--ink-2);
 }
+
+/* ---------- harmonias ---------- */
+
+.harmony {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.harmony .results-title {
+  margin: 0;
+}
+
+.harmony-base {
+  color: var(--ink-2);
+}
+
+.harmony-note {
+  margin: 0;
+  font-size: 13px;
+}
+
+.harmony-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.harmony-head {
+  display: flex;
+  flex-direction: column;
+}
+
+.harmony-head strong {
+  font-size: 14px;
+}
+
+.harmony-head span {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.harmony-row {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 34px repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+}
+
+/* Amostra estreita da cor de referência, para comparar lado a lado */
+.harmony-ref {
+  display: flex;
+  height: 100%;
+  padding: 4px 0;
+}
+
+.harmony-ref .browser-swatch {
+  flex: 1;
+  height: auto;
+  margin: 0;
+}
+
+.harmony-from {
+  text-transform: none;
+  letter-spacing: 0;
+}
